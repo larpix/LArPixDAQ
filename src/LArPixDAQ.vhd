@@ -45,9 +45,9 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
 
    COMPONENT uart_rx
       GENERIC (
-         CLK_Hz     : INTEGER;
-         BAUD       : INTEGER;
-         DATA_WIDTH : INTEGER := 8
+         CLK_Hz       : INTEGER;
+         BAUD         : INTEGER;
+         DATA_WIDTH   : INTEGER := 8
          );
       PORT (
          CLK         : IN  STD_LOGIC;
@@ -66,7 +66,8 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
       GENERIC (
          CLK_Hz     : INTEGER;
          BAUD       : INTEGER;
-         DATA_WIDTH : INTEGER := 8
+         DATA_WIDTH : INTEGER := 8;
+         CLKOUT_RATIO : INTEGER := 2
          );
       PORT (
          CLK         : IN  STD_LOGIC;
@@ -202,7 +203,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    uart_rx_RS232 : uart_rx
       GENERIC MAP (
          CLK_Hz     => 100000000,
-         BAUD       => 100000, -- 1000000, default
+         BAUD       => 1000000, -- default
          DATA_WIDTH => 8
          )
       PORT MAP (
@@ -220,7 +221,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    uart_tx_RS232 : uart_tx
       GENERIC MAP (
          CLK_Hz     => 100000000,
-         BAUD       => 100000, -- 1000000, default
+         BAUD       => 1000000, -- default
          DATA_WIDTH => 8
          )
       PORT MAP (
