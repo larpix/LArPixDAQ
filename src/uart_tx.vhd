@@ -9,7 +9,7 @@ ENTITY uart_tx IS
       CLK_Hz       : INTEGER;
       BAUD         : INTEGER;
       DATA_WIDTH   : INTEGER := 8;
-      CLKOUT_RATIO : INTEGER := 2
+      CLKOUT_RATIO : INTEGER := 2 -- number of clkout cycles for each baud cycle
       );
    PORT (
       CLK         : IN  STD_LOGIC;
@@ -28,14 +28,16 @@ END ENTITY uart_tx;
 
 ARCHITECTURE uart_tx_arch OF uart_tx IS
 
-   CONSTANT CLK_LENGTH   : INTEGER := CLK_Hz / BAUD / CLKOUT_RATIO;
-   SIGNAL cnt_clk_length : INTEGER RANGE 0 TO CLK_LENGTH;
-   SIGNAL cnt_bits       : INTEGER RANGE 0 TO DATA_WIDTH+2;
+   CONSTANT CLK_LENGTH    : INTEGER := CLK_Hz / BAUD / 2;
+   SIGNAL cnt_baud_length : INTEGER RANGE 0 TO CLKOUT_RATIO;
+   SIGNAL cnt_clk_length  : INTEGER RANGE 0 TO CLK_LENGTH;
+   SIGNAL cnt_bits        : INTEGER RANGE 0 TO DATA_WIDTH+2;
 
    SIGNAL CLK_MASTER    : STD_LOGIC := '0';
    SIGNAL CLK_MASTER1   : STD_LOGIC := '0';
    SIGNAL CLK_MASTERold : STD_LOGIC := '0';
    SIGNAL CLK_BAUD      : STD_LOGIC := '0';
+   SIGNAL CLK_BAUD1     : STD_LOGIC := '0';
    SIGNAL CLK_BAUDold   : STD_LOGIC := '0';
 
    TYPE state_type IS (IDLE, SHIFT);
@@ -54,7 +56,12 @@ BEGIN  -- ARCHITECTURE uart_tx_arch
          CLK_MASTER1 <= CLK_MASTER;
          CLKout      <= CLK_MASTER1;
          IF CLK_MASTERold = '1' AND CLK_MASTER = '0' THEN
-            CLK_BAUD <= NOT CLK_BAUD;
+            IF cnt_baud_length = 0 THEN
+                cnt_baud_length <= (CLKOUT_RATIO/2) - 1;
+                CLK_BAUD        <= NOT CLK_BAUD;
+            ELSE
+                cnt_baud_length <= cnt_baud_length - 1;
+            END IF;
          END IF;
          CLK_MASTERold <= CLK_MASTER;
          IF cnt_clk_length = 0 THEN
