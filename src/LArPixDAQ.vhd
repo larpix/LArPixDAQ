@@ -178,6 +178,8 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
    SIGNAL LArPix_TX_data_update : STD_LOGIC;
    SIGNAL LArPix_TX_busy        : STD_LOGIC;
    
+   TYPE write_reg_state_type IS (IDLE, SET, FINISH);
+   SIGNAL write_reg_state : write_reg_state_type := IDLE;
    SIGNAL write_reg_data        : STD_LOGIC_VECTOR (63 DOWNTO 0);
    SIGNAL write_reg_update      : STD_LOGIC;
    SIGNAL write_reg_busy        : STD_LOGIC := '0';
@@ -298,19 +300,30 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          );
    write_reg : PROCESS (RST, CLK) IS
    BEGIN
-      IF RST = '1' THEN -- reset default values
-         LArPix_CLK_RATIO <= 2;
+      IF RST = '1' THEN
+         write_reg_state <= IDLE;
          write_reg_busy <= '0';
+         -- reset default values
+         LArPix_CLK_RATIO <= 2;
       ELSIF CLK'EVENT AND CLK = '1' THEN
-         IF write_reg_update = '1' THEN
-            write_reg_busy <= '1';
-            -- addr 0 = LArPix_CLK_RATIO
-            IF write_reg_data(7 DOWNTO 0) = x"00" THEN
-               LArPix_CLK_RATIO <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
-            END IF;
-         ELSE
-            write_reg_busy <= '0';
-         END IF;
+         CASE write_reg_state IS
+            WHEN IDLE =>
+               IF write_reg_update = '1' THEN
+                  write_reg_busy <= '1';
+                  write_reg_state <= SET;
+               END IF;
+            WHEN SET =>
+               -- addr 0 = LArPix_CLK_RATIO
+               IF write_reg_data(7 DOWNTO 0) = x"00" THEN
+                  LArPix_CLK_RATIO <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+               END IF;
+               write_reg_state <= FINISH;
+            WHEN FINISH =>
+               write_reg_busy <= '0';
+               write_reg_state <= IDLE;
+            WHEN OTHERS =>
+               NULL;
+        END CASE;
       END IF;
    END PROCESS;
 
