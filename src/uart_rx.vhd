@@ -7,12 +7,13 @@ USE IEEE.numeric_std.ALL;
 ENTITY uart_rx IS
    GENERIC (
       CLK_Hz     : INTEGER;
-      BAUD       : INTEGER;
+      CLKIN_Hz   : INTEGER;
       DATA_WIDTH : INTEGER := 8
       );
    PORT (
       CLK         : IN  STD_LOGIC;
       RST         : IN  STD_LOGIC;
+      CLKIN_RATIO : IN  INTEGER;
       -- UART RX
       RX          : IN  STD_LOGIC;
       -- received data
@@ -25,8 +26,9 @@ END ENTITY uart_rx;
 
 ARCHITECTURE uart_rx_arch OF uart_rx IS
 
-   CONSTANT BIT_LENGTH   : INTEGER := CLK_Hz / BAUD;
-   SIGNAL cnt_bit_length : INTEGER RANGE -1 TO BIT_LENGTH;
+   CONSTANT CLK_LENGTH   : INTEGER := CLK_Hz / CLKIN_Hz;
+   SIGNAL bit_length     : INTEGER RANGE CLK_LENGTH TO CLK_LENGTH * 255;
+   SIGNAL cnt_bit_length : INTEGER RANGE -1 TO CLK_LENGTH * 255;
    SIGNAL cnt_bits       : INTEGER RANGE 0 TO DATA_WIDTH+2;
 
    TYPE state_type IS (IDLE, WT, SHIFT, UPDATE);
@@ -62,9 +64,10 @@ BEGIN  -- ARCHITECTURE uart_rx_arch
          state <= IDLE;
       ELSIF CLK'EVENT AND CLK = '1' THEN  -- rising clock edge
          data_update <= '0';
+         bit_length  <= CLK_LENGTH * CLKIN_RATIO;
          CASE state IS
             WHEN IDLE =>
-               cnt_bit_length <= (BIT_LENGTH / 2) - 2;
+               cnt_bit_length <= (bit_length / 2) - 2;
                cnt_bits       <= 0;
                IF RXfiltered = '0' THEN
                   state <= WT;
@@ -79,7 +82,7 @@ BEGIN  -- ARCHITECTURE uart_rx_arch
             WHEN SHIFT =>
                cnt_bits       <= cnt_bits + 1;
                srg            <= RXfiltered & srg (DATA_WIDTH+1 DOWNTO 1);
-               cnt_bit_length <= BIT_LENGTH - 2;
+               cnt_bit_length <= bit_length - 2;
                IF cnt_bits >= DATA_WIDTH+1 THEN
                   state <= UPDATE;
                ELSE

@@ -5,6 +5,10 @@ USE IEEE.std_logic_1164.ALL;
 USE IEEE.numeric_std.ALL;
 
 ENTITY RS232_2_LArPix IS
+   GENERIC (
+      START_BYTE : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"73"; -- ASCII s
+      STOP_BYTE  : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"71" -- ASCII q
+      );
    PORT (
       CLK                : IN  STD_LOGIC;
       RST                : IN  STD_LOGIC;
@@ -21,9 +25,6 @@ ENTITY RS232_2_LArPix IS
 END ENTITY RS232_2_LArPix;
 
 ARCHITECTURE RS232_2_LArPix_arch OF RS232_2_LArPix IS
-
-   CONSTANT START_BYTE : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"73";  -- ASCII s
-   CONSTANT STOP_BYTE  : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"71";  -- ASCII q
 
    TYPE state_type IS (IDLE, START_TX, WT_TX_DONE);
    SIGNAL state : state_type := IDLE;

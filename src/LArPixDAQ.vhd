@@ -46,12 +46,13 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
    COMPONENT uart_rx
       GENERIC (
          CLK_Hz       : INTEGER;
-         BAUD         : INTEGER;
+         CLKIN_Hz     : INTEGER;
          DATA_WIDTH   : INTEGER := 8
          );
       PORT (
          CLK         : IN  STD_LOGIC;
          RST         : IN  STD_LOGIC;
+         CLKIN_RATIO : IN  INTEGER;
          -- UART RX
          RX          : IN  STD_LOGIC;
          -- received data
@@ -65,26 +66,30 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
    COMPONENT uart_tx
       GENERIC (
          CLK_Hz     : INTEGER;
-         BAUD       : INTEGER;
-         DATA_WIDTH : INTEGER := 8;
-         CLKOUT_RATIO : INTEGER := 2
+         CLKOUT_HZ  : INTEGER;
+         DATA_WIDTH : INTEGER := 8
          );
       PORT (
-         CLK         : IN  STD_LOGIC;
-         RST         : IN  STD_LOGIC;
+         CLK          : IN  STD_LOGIC;
+         RST          : IN  STD_LOGIC;
+         CLKOUT_RATIO : IN  INTEGER;
          -- UART RX
-         TX          : OUT STD_LOGIC;
-         CLKout      : OUT STD_LOGIC;
+         TX           : OUT STD_LOGIC;
+         CLKout       : OUT STD_LOGIC;
          -- received data
-         data        : IN  STD_LOGIC_VECTOR (DATA_WIDTH-1 DOWNTO 0);
-         data_update : IN  STD_LOGIC;
-         busy        : OUT STD_LOGIC;
+         data         : IN  STD_LOGIC_VECTOR (DATA_WIDTH-1 DOWNTO 0);
+         data_update  : IN  STD_LOGIC;
+         busy         : OUT STD_LOGIC;
                                         -- test signals
-         TC          : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
+         TC           : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
          );
    END COMPONENT uart_tx;
 
    COMPONENT RS232_2_LArPix
+      GENERIC (
+         START_BYTE : IN STD_LOGIC_VECTOR (7 DOWNTO 0) := x"73";
+         STOP_BYTE  : IN STD_LOGIC_VECTOR (7 DOWNTO 0) := x"71"
+      );
       PORT (
          CLK                : IN  STD_LOGIC;
          RST                : IN  STD_LOGIC;
@@ -158,14 +163,24 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
 
    SIGNAL RS232_TX_busy : STD_LOGIC;
 
+   CONSTANT RS232_BAUD          : INTEGER := 1000000;
+   CONSTANT RS232_CLK_RATIO     : INTEGER := 2;
+   
    SIGNAL RS232_RX_data        : STD_LOGIC_VECTOR (7 DOWNTO 0);
    SIGNAL RS232_TX_data        : STD_LOGIC_VECTOR (7 DOWNTO 0);
    SIGNAL RS232_RX_data_update : STD_LOGIC;
    SIGNAL RS232_TX_data_update : STD_LOGIC;
-
+   
+   CONSTANT LArPix_CLK_Hz       : INTEGER := 10000000;
+   SIGNAL LArPix_CLK_RATIO      : INTEGER RANGE 2 TO 255 := 2;
+   
    SIGNAL LArPix_TX_data        : STD_LOGIC_VECTOR (63 DOWNTO 0);
    SIGNAL LArPix_TX_data_update : STD_LOGIC;
    SIGNAL LArPix_TX_busy        : STD_LOGIC;
+   
+   SIGNAL write_reg_data        : STD_LOGIC_VECTOR (63 DOWNTO 0);
+   SIGNAL write_reg_update      : STD_LOGIC;
+   SIGNAL write_reg_busy        : STD_LOGIC := '0';
 
    SIGNAL LArPix_RX_data        : STD_LOGIC_VECTOR (63 DOWNTO 0) := (OTHERS => '0');
    SIGNAL LArPix_RX_data_update : STD_LOGIC;
@@ -199,16 +214,17 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    ----------------------------------------------------------------------------
    -- RS232
    ----------------------------------------------------------------------------
-
+   
    uart_rx_RS232 : uart_rx
       GENERIC MAP (
          CLK_Hz     => 100000000,
-         BAUD       => 1000000, -- default
+         CLKIN_Hz   => RS232_CLK_RATIO * RS232_BAUD,
          DATA_WIDTH => 8
          )
       PORT MAP (
          CLK         => CLK,
          RST         => RST,
+         CLKIN_RATIO => RS232_CLK_RATIO, 
          -- UART RX
          RX          => RXD,
          -- received data
@@ -221,21 +237,22 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    uart_tx_RS232 : uart_tx
       GENERIC MAP (
          CLK_Hz     => 100000000,
-         BAUD       => 1000000, -- default
+         CLKOUT_Hz  => RS232_CLK_RATIO * RS232_BAUD,
          DATA_WIDTH => 8
          )
       PORT MAP (
-         CLK         => CLK,
-         RST         => RST,
+         CLK          => CLK,
+         RST          => RST,
+         CLKOUT_RATIO => RS232_CLK_RATIO,
          -- UART RX
-         TX          => TXDi,
-         CLKout      => OPEN,
+         TX           => TXDi,
+         CLKout       => OPEN,
          -- received data
-         data        => RS232_TX_data,
-         data_update => RS232_TX_data_update,
-         busy        => RS232_TX_busy,
+         data         => RS232_TX_data,
+         data_update  => RS232_TX_data_update,
+         busy         => RS232_TX_busy,
          -- test signals
-         TC          => OPEN
+         TC           => OPEN
          );
 
    TXD <= TXDi;
@@ -261,7 +278,41 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          -- test
          TC                 => OPEN
          );
-
+         
+   RS232_2_write_reg_inst : RS232_2_LArPix
+      GENERIC MAP (
+         START_BYTE         => x"63" -- ASCII c
+         )
+      PORT MAP (
+         CLK                => CLK,
+         RST                => RST,
+         -- RS232 UART RX
+         data_RS232         => RS232_RX_data,
+         data_update_RS232  => RS232_RX_data_update,
+         -- LArPix UART TX
+         data_LArPix        => write_reg_data,
+         data_update_LArPix => write_reg_update,
+         busy_LArPix        => write_reg_busy,
+         -- test
+         TC                 => OPEN
+         );
+   write_reg : PROCESS (RST, CLK) IS
+   BEGIN
+      IF RST = '1' THEN -- reset default values
+         LArPix_CLK_RATIO <= 2;
+         write_reg_busy <= '0';
+      ELSIF CLK'EVENT AND CLK = '1' THEN
+         IF write_reg_update = '1' THEN
+            write_reg_busy <= '1';
+            -- addr 0 = LArPix_CLK_RATIO
+            IF write_reg_data(7 DOWNTO 0) = x"00" THEN
+               LArPix_CLK_RATIO <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+            END IF;
+         ELSE
+            write_reg_busy <= '0';
+         END IF;
+      END IF;
+   END PROCESS;
 
    fifo_54x32k_inst : fifo_54x32k
       PORT MAP (
@@ -297,13 +348,14 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
 
    uart_rx_LArPix : uart_rx
       GENERIC MAP (
-         CLK_Hz     => 100000000,
-         BAUD       => 25000000, -- 5000000, -- default
-         DATA_WIDTH => 64
+         CLK_Hz      => 100000000,
+         CLKIN_Hz    => LArPix_CLK_Hz,
+         DATA_WIDTH  => 64
          )
       PORT MAP (
          CLK         => CLK,
          RST         => RST,
+         CLKIN_RATIO => LArPix_CLK_RATIO,
          -- UART RX
          RX          => MISO,
          -- received data
@@ -314,28 +366,28 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          );
 
    -- for propper BAUD rate (no rounding errors)
-   -- CLK_Hz / BAUD / 4 must be an integer > 1
+   -- CLK_Hz / CLKOUT_Hz / CLKOUT_RATIO / 2 must be an integer > 1
    --
-   -- LArPix clock MCLK is 2x BAUD
+   -- LArPix clock MCLK is CLKOUT_RATIO x BAUD
    uart_tx_LArPix : uart_tx
       GENERIC MAP (
          CLK_Hz       => 100000000,
-         BAUD         => 25000000, -- 5000000, -- default
-         DATA_WIDTH   => 64,
-         CLKOUT_RATIO => 4
+         CLKOUT_Hz    => LArPix_CLK_Hz,
+         DATA_WIDTH   => 64
          )
       PORT MAP (
-         CLK         => CLK,
-         RST         => RST,
+         CLK          => CLK,
+         RST          => RST,
+         CLKOUT_RATIO => LArPix_CLK_RATIO,
          -- UART RX
-         TX          => MOSI,
-         CLKout      => MCLKi,
+         TX           => MOSI,
+         CLKout       => MCLKi,
          -- received data
-         data        => LArPix_TX_data,
-         data_update => LArPix_TX_data_update,
-         busy        => LArPix_TX_busy,
+         data         => LArPix_TX_data,
+         data_update  => LArPix_TX_data_update,
+         busy         => LArPix_TX_busy,
          -- test signals
-         TC          => OPEN
+         TC           => OPEN
          );
    MCLK <= MCLKi;
 
@@ -355,15 +407,17 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
 
    LED_RGB <= "111";
 
-   --ila_16_inst : ila_16
-   --   PORT MAP (
-   --      clk    => CLK,
-   --      probe0 => probe0
-   --      );
+--   ila_16_inst : ila_16
+--      PORT MAP (
+--         clk    => CLK,
+--         probe0 => probe0
+--         );
 
    probe0 (7 DOWNTO 0)  <= RS232_RX_data;
    probe0 (8)           <= RS232_RX_data_update;
-   probe0 (13 DOWNTO 9) <= (OTHERS => '0');
+   probe0 (11 DOWNTO 9) <= (OTHERS => '0');
+   probe0 (12)          <= write_reg_update;
+   probe0 (13)          <= write_reg_busy;
    probe0 (14)          <= LArPix_TX_data_update;
    probe0 (15)          <= LArPix_TX_busy;
 

@@ -7,13 +7,13 @@ USE IEEE.numeric_std.ALL;
 ENTITY uart_tx IS
    GENERIC (
       CLK_Hz       : INTEGER;
-      BAUD         : INTEGER;
-      DATA_WIDTH   : INTEGER := 8;
-      CLKOUT_RATIO : INTEGER := 2 -- number of clkout cycles for each baud cycle
+      CLKOUT_Hz    : INTEGER;
+      DATA_WIDTH   : INTEGER := 8
       );
    PORT (
       CLK         : IN  STD_LOGIC;
       RST         : IN  STD_LOGIC;
+      CLKOUT_RATIO : IN INTEGER;
       -- UART RX
       TX          : OUT STD_LOGIC;
       CLKout      : OUT STD_LOGIC;
@@ -28,8 +28,9 @@ END ENTITY uart_tx;
 
 ARCHITECTURE uart_tx_arch OF uart_tx IS
 
-   CONSTANT CLK_LENGTH    : INTEGER := CLK_Hz / BAUD / 2;
-   SIGNAL cnt_baud_length : INTEGER RANGE 0 TO CLKOUT_RATIO;
+   CONSTANT CLK_LENGTH    : INTEGER := CLK_Hz / CLKOUT_Hz;
+   SIGNAL baud_length     : INTEGER RANGE 2 TO 255;
+   SIGNAL cnt_baud_length : INTEGER RANGE 0 TO 255;
    SIGNAL cnt_clk_length  : INTEGER RANGE 0 TO CLK_LENGTH;
    SIGNAL cnt_bits        : INTEGER RANGE 0 TO DATA_WIDTH+2;
 
@@ -55,9 +56,10 @@ BEGIN  -- ARCHITECTURE uart_tx_arch
       ELSIF CLK'EVENT AND CLK = '1' THEN  -- rising clock edge
          CLK_MASTER1 <= CLK_MASTER;
          CLKout      <= CLK_MASTER1;
+         baud_length <= CLKOUT_RATIO;
          IF CLK_MASTERold = '1' AND CLK_MASTER = '0' THEN
             IF cnt_baud_length = 0 THEN
-                cnt_baud_length <= (CLKOUT_RATIO/2) - 1;
+                cnt_baud_length <= (baud_length/2) - 1;
                 CLK_BAUD        <= NOT CLK_BAUD;
             ELSE
                 cnt_baud_length <= cnt_baud_length - 1;
