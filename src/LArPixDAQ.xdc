@@ -26,6 +26,12 @@ set_property IOSTANDARD LVCMOS33 [get_ports RST_N]
 # Buttons
 set_property PACKAGE_PIN A18 [get_ports BTN0]
 set_property IOSTANDARD LVCMOS33 [get_ports BTN0]
+set_property PACKAGE_PIN B18 [get_ports BTN1]
+set_property IOSTANDARD LVCMOS33 [get_ports BTN1]
+
+# Utility
+set_property PACKAGE_PIN G17 [get_ports PULSE_OUT]
+set_property IOSTANDARD LVCMOS [get_ports PULSE_OUT]
 
 # LEDs
 set_property PACKAGE_PIN A17 [get_ports {LEDs[0]}]

@@ -17,6 +17,9 @@ ENTITY LArPixDAQ IS
       RST_N   : OUT STD_LOGIC;
       -- buttons
       BTN0    : IN  STD_LOGIC;
+      BTN1    : IN  STD_LOGIC;
+      -- utlity
+      PULSE_OUT : OUT STD_LOGIC;
       -- LEDs
       LED_RGB : OUT STD_LOGIC_VECTOR (2 DOWNTO 0);
       LEDs    : OUT STD_LOGIC_VECTOR (1 DOWNTO 0)
@@ -139,13 +142,26 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
       PORT (
          CLK       : IN  STD_LOGIC;
          RST       : IN  STD_LOGIC;
-         CNT_RESET : IN  INTEGER;
+         CNT_RESET : IN  INTEGER RANGE 0 TO 255;
          TRIG      : IN  STD_LOGIC;
          MCLK      : IN  STD_LOGIC;
          RST_N     : OUT STD_LOGIC;
          TC        : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
          );
    END COMPONENT LArPixRST_N;
+   
+   COMPONENT PulseGen
+      PORT (
+         CLK   : IN  STD_LOGIC;
+         RST   : IN  STD_LOGIC;
+         CNT_PULSE_LEN : IN INTEGER RANGE 0 TO 255;
+         CNT_PULSE_REP : IN INTEGER RANGE 0 TO 2147483647;
+         EN    : IN  STD_LOGIC;
+         MCLK  : IN  STD_LOGIC;
+         PULSE : OUT STD_LOGIC;
+         TC    : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
+         );
+   END COMPONENT PulseGen;
 
    COMPONENT ila_16
       PORT (
@@ -191,6 +207,12 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
    
    SIGNAL LArPix_rst_trig : STD_LOGIC := '0';
    SIGNAL rst_reg         : STD_LOGIC := '0';
+   
+   SIGNAL UTIL_PULSE_LEN : INTEGER RANGE 0 TO 2147483647 := 2;
+   SIGNAL UTIL_PULSE_REP : INTEGER RANGE 0 TO 2147483647 := 4096;
+   SIGNAL UTIL_PULSE_EN  : STD_LOGIC := '0';
+   
+   SIGNAL PULSEo : STD_LOGIC := '0';
 
    SIGNAL fifo_dout  : STD_LOGIC_VECTOR (63 DOWNTO 0);
    SIGNAL fifo_ren   : STD_LOGIC;
@@ -203,7 +225,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    clock_generator_inst : clock_generator
       PORT MAP (
          CLKin  => GCLK,
-         RST    => '0',
+         RST    => BTN1,
          CLK100 => CLK,
          CLK200 => OPEN,
          locked => locked
@@ -312,6 +334,9 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          LArPix_CLK_RATIO <= 2;
          LArPix_CNT_RESET <= 128;
          rst_reg <= '0';
+         UTIL_PULSE_LEN <= 2;
+         UTIL_PULSE_REP <= 4096;
+         UTIL_PULSE_EN  <= '0';
       ELSIF CLK'EVENT AND CLK = '1' THEN
          CASE write_reg_state IS
             WHEN IDLE =>
@@ -323,10 +348,27 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
                -- addr 0 = LArPix_CLK_RATIO
                IF write_reg_data(7 DOWNTO 0) = x"00" THEN
                   LArPix_CLK_RATIO <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+                  
+               -- addr 1 = LArPix_CNT_RESET
                ELSIF write_reg_data(7 DOWNTO 0) = x"01" THEN
                   LArPix_CNT_RESET <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+                  
+               -- addr 2 = trigger LArPix reset
                ELSIF write_reg_data(7 DOWNTO 0) = x"02" THEN
                   rst_reg <= '1';
+                  
+               -- addr 3 = utility pulse length
+               ELSIF write_reg_data(7 DOWNTO 0) = x"03" THEN
+                  UTIL_PULSE_LEN <= TO_INTEGER( UNSIGNED(write_reg_data(39 DOWNTO 8)) );
+                  
+               -- addr 4 = utility pulse repetition rate
+               ELSIF write_reg_data(7 DOWNTO 0) = x"04" THEN
+                  UTIL_PULSE_REP <= TO_INTEGER( UNSIGNED(write_reg_data(39 DOWNTO 8)) );
+                  
+               -- addr 5 = utility pulse enable
+               ELSIF write_reg_data(7 DOWNTO 0) = x"05" THEN
+                  UTIL_PULSE_EN <= write_reg_data(8);
+               
                END IF;
                write_reg_state <= FINISH;
             WHEN FINISH =>
@@ -390,7 +432,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          TC          => OPEN
          );
 
-   -- for propper BAUD rate (no rounding errors)
+   -- for proper BAUD rate (no rounding errors)
    -- CLK_Hz / CLKOUT_Hz / CLKOUT_RATIO / 2 must be an integer > 1
    --
    -- LArPix clock MCLK is CLKOUT_RATIO x BAUD
@@ -429,6 +471,21 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          );
 
    -----------------------------------------------------------------------------
+   -- Utility blocks
+   -----------------------------------------------------------------------------
+   util_pulse_inst : PulseGen
+         PORT MAP (
+            CLK   => CLK,
+            RST   => RST,
+            CNT_PULSE_LEN => UTIL_PULSE_LEN,
+            CNT_PULSE_REP => UTIL_PULSE_REP,
+            EN    => UTIL_PULSE_EN,
+            MCLK  => MCLKi,
+            PULSE => PULSEo,
+            TC    => OPEN
+            );
+   PULSE_OUT <= PULSEo;
+
    LEDs(0) <= RS232_TX_busy;
    LEDs(1) <= LArPix_TX_busy;
 
@@ -442,9 +499,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
 
    probe0 (7 DOWNTO 0)  <= RS232_RX_data;
    probe0 (8)           <= RS232_RX_data_update;
-   probe0 (11 DOWNTO 9) <= (OTHERS => '0');
-   probe0 (12)          <= write_reg_update;
-   probe0 (13)          <= write_reg_busy;
+   probe0 (13 DOWNTO 9) <= (OTHERS => '0');
    probe0 (14)          <= LArPix_TX_data_update;
    probe0 (15)          <= LArPix_TX_busy;
 
