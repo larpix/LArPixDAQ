@@ -7,7 +7,8 @@ ENTITY LArPixRST_N IS
    PORT (
       CLK   : IN  STD_LOGIC;
       RST   : IN  STD_LOGIC;
-      BTN   : IN  STD_LOGIC;
+      CNT_RESET : IN INTEGER RANGE 0 TO 255;
+      TRIG  : IN  STD_LOGIC;
       MCLK  : IN  STD_LOGIC;
       RST_N : OUT STD_LOGIC;
       TC    : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
@@ -16,38 +17,41 @@ END ENTITY LArPixRST_N;
 
 ARCHITECTURE LArPixRST_N_arch OF LArPixRST_N IS
 
-   CONSTANT CNT_RESET : INTEGER := 10000000;
-   SIGNAL cnt         : INTEGER RANGE -1 TO CNT_RESET;
+   SIGNAL cnt      : INTEGER RANGE -1 TO 255;
 
    SIGNAL srg     : STD_LOGIC_VECTOR (3 DOWNTO 0) := (OTHERS => '0');
    SIGNAL MCLKold : STD_LOGIC;
 
 BEGIN  -- ARCHITECTURE LArPixRST_N_arch
 
-   BTN_SYNC : PROCESS (CLK, RST) IS
-   BEGIN  -- PROCESS BTN_SYNC
+   TRIG_SYNC : PROCESS (CLK, RST) IS
+   BEGIN  -- PROCESS TRIG_SYNC
       IF RST = '1' THEN                 -- asynchronous reset (active high)
-
+         
       ELSIF CLK'EVENT AND CLK = '1' THEN  -- rising clock edge
-         srg <= srg (2 DOWNTO 0) & BTN;
+         srg <= srg (2 DOWNTO 0) & TRIG;
       END IF;
-   END PROCESS BTN_SYNC;
+   END PROCESS TRIG_SYNC;
 
    GEN_RST_N : PROCESS (CLK, RST) IS
    BEGIN  -- PROCESS GEN_RST_N
       IF RST = '1' THEN                   -- asynchronous reset (active high)
          cnt <= CNT_RESET;
+
       ELSIF CLK'EVENT AND CLK = '1' THEN  -- rising clock edge
          MCLKold <= MCLK;
+         
          IF srg (3) = '1' THEN
             -- reset the counter
             -- button is high active
-            cnt   <= CNT_RESET;
-            RST_N <= '0';
+            cnt      <= CNT_RESET;
+            RST_N    <= '0';
          ELSIF cnt >= 0 THEN
-            -- count down
-            cnt   <= cnt - 1;
-            RST_N <= '0';
+            -- count down (based on MCLK rising edges)
+            IF MCLK = '1' and MCLKold = '0' THEN
+               cnt   <= cnt - 1;
+               RST_N <= '0';
+            END IF;
          ELSE
             -- the reset is done
             cnt <= cnt;

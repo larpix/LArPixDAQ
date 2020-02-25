@@ -19,6 +19,7 @@ ARCHITECTURE LArPixDAQ_tb_arch OF LArPixDAQ_tb IS
          MCLK    : OUT STD_LOGIC;       -- master clock
          MOSI    : OUT STD_LOGIC;
          MISO    : IN  STD_LOGIC;
+         RST_N   : OUT STD_LOGIC;
          -- buttons
          BTN0    : IN  STD_LOGIC;
          -- LEDs
@@ -74,13 +75,14 @@ ARCHITECTURE LArPixDAQ_tb_arch OF LArPixDAQ_tb IS
    SIGNAL TXD  : STD_LOGIC;
 
    TYPE RS232_TX_DATA_TYPE IS ARRAY (NATURAL RANGE <>) OF STD_LOGIC_VECTOR (7 DOWNTO 0);
-   CONSTANT RS232_TX_ARRAY : RS232_TX_DATA_TYPE (0 TO 59) := (
+   CONSTANT RS232_TX_ARRAY : RS232_TX_DATA_TYPE (0 TO 69) := (
       x"73", x"11", x"22", x"33", x"44", x"55", x"66", x"77", x"88", x"71", 
       x"73", x"ff", x"ee", x"dd", x"cc", x"bb", x"aa", x"99", x"88", x"71", 
       x"63", x"00", x"04", x"00", x"00", x"00", x"00", x"00", x"00", x"71",
       x"73", x"11", x"22", x"33", x"44", x"55", x"66", x"77", x"88", x"71",
       x"63", x"00", x"02", x"00", x"00", x"00", x"00", x"00", x"00", x"71",
-      x"73", x"11", x"22", x"33", x"44", x"55", x"66", x"77", x"88", x"71"
+      x"63", x"01", x"02", x"00", x"00", x"00", x"00", x"00", x"00", x"71",
+      x"63", x"02", x"00", x"00", x"00", x"00", x"00", x"00", x"00", x"71"
       );
    SIGNAL cnt_RS232_data   : INTEGER                      := 0;
 
@@ -95,9 +97,10 @@ ARCHITECTURE LArPixDAQ_tb_arch OF LArPixDAQ_tb IS
    
    SIGNAL RST : STD_LOGIC := '0';
 
-   SIGNAL MCLK : STD_LOGIC;
-   SIGNAL MISO : STD_LOGIC;
-   SIGNAL MOSI : STD_LOGIC;
+   SIGNAL MCLK  : STD_LOGIC;
+   SIGNAL MISO  : STD_LOGIC;
+   SIGNAL MOSI  : STD_LOGIC;
+   SIGNAL RST_N : STD_LOGIC := '1';
 
 BEGIN  -- ARCHITECTURE LArPixDAQ_tb_arch
 
@@ -114,6 +117,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_tb_arch
          MCLK    => MCLK,
          MOSI    => MOSI,
          MISO    => MISO,
+         RST_N   => RST_N,
          -- buttons
          BTN0    => RST,
          -- LEDs
@@ -173,7 +177,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_tb_arch
       WAIT FOR 10 NS;
       RS232_TX_data_update <= '0';
       WAIT UNTIL RS232_TX_busy = '0';
-      cnt_RS232_data       <= (cnt_RS232_data + 1) MOD 60;
+      cnt_RS232_data       <= (cnt_RS232_data + 1) MOD 70;
    END PROCESS RS232_TX_FSM;
 
 END ARCHITECTURE LArPixDAQ_tb_arch;

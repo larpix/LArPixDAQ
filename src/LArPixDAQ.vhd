@@ -137,12 +137,13 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
 
    COMPONENT LArPixRST_N
       PORT (
-         CLK   : IN  STD_LOGIC;
-         RST   : IN  STD_LOGIC;
-         BTN   : IN  STD_LOGIC;
-         MCLK  : IN  STD_LOGIC;
-         RST_N : OUT STD_LOGIC;
-         TC    : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
+         CLK       : IN  STD_LOGIC;
+         RST       : IN  STD_LOGIC;
+         CNT_RESET : IN  INTEGER;
+         TRIG      : IN  STD_LOGIC;
+         MCLK      : IN  STD_LOGIC;
+         RST_N     : OUT STD_LOGIC;
+         TC        : OUT STD_LOGIC_VECTOR (7 DOWNTO 0)
          );
    END COMPONENT LArPixRST_N;
 
@@ -163,16 +164,17 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
 
    SIGNAL RS232_TX_busy : STD_LOGIC;
 
-   CONSTANT RS232_BAUD          : INTEGER := 1000000;
-   CONSTANT RS232_CLK_RATIO     : INTEGER := 2;
+   CONSTANT RS232_BAUD      : INTEGER := 1000000;
+   CONSTANT RS232_CLK_RATIO : INTEGER := 2;
    
    SIGNAL RS232_RX_data        : STD_LOGIC_VECTOR (7 DOWNTO 0);
    SIGNAL RS232_TX_data        : STD_LOGIC_VECTOR (7 DOWNTO 0);
    SIGNAL RS232_RX_data_update : STD_LOGIC;
    SIGNAL RS232_TX_data_update : STD_LOGIC;
    
-   CONSTANT LArPix_CLK_Hz       : INTEGER := 10000000;
-   SIGNAL LArPix_CLK_RATIO      : INTEGER RANGE 2 TO 255 := 2;
+   CONSTANT LArPix_CLK_Hz  : INTEGER := 10000000;
+   SIGNAL LArPix_CLK_RATIO : INTEGER RANGE 2 TO 255 := 2;
+   SIGNAL LArPix_CNT_RESET : INTEGER RANGE 0 TO 255 := 128;
    
    SIGNAL LArPix_TX_data        : STD_LOGIC_VECTOR (63 DOWNTO 0);
    SIGNAL LArPix_TX_data_update : STD_LOGIC;
@@ -186,6 +188,9 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
 
    SIGNAL LArPix_RX_data        : STD_LOGIC_VECTOR (63 DOWNTO 0) := (OTHERS => '0');
    SIGNAL LArPix_RX_data_update : STD_LOGIC;
+   
+   SIGNAL LArPix_rst_trig : STD_LOGIC := '0';
+   SIGNAL rst_reg         : STD_LOGIC := '0';
 
    SIGNAL fifo_dout  : STD_LOGIC_VECTOR (63 DOWNTO 0);
    SIGNAL fifo_ren   : STD_LOGIC;
@@ -305,6 +310,8 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          write_reg_busy <= '0';
          -- reset default values
          LArPix_CLK_RATIO <= 2;
+         LArPix_CNT_RESET <= 128;
+         rst_reg <= '0';
       ELSIF CLK'EVENT AND CLK = '1' THEN
          CASE write_reg_state IS
             WHEN IDLE =>
@@ -316,11 +323,16 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
                -- addr 0 = LArPix_CLK_RATIO
                IF write_reg_data(7 DOWNTO 0) = x"00" THEN
                   LArPix_CLK_RATIO <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+               ELSIF write_reg_data(7 DOWNTO 0) = x"01" THEN
+                  LArPix_CNT_RESET <= TO_INTEGER( UNSIGNED(write_reg_data(15 DOWNTO 8)) );
+               ELSIF write_reg_data(7 DOWNTO 0) = x"02" THEN
+                  rst_reg <= '1';
                END IF;
                write_reg_state <= FINISH;
             WHEN FINISH =>
                write_reg_busy <= '0';
                write_reg_state <= IDLE;
+               rst_reg <= '0';
             WHEN OTHERS =>
                NULL;
         END CASE;
@@ -404,14 +416,16 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          );
    MCLK <= MCLKi;
 
+   LArPix_rst_trig <= BTN0 OR rst_reg;
    LArPixRST_N_inst : LArPixRST_N
       PORT MAP (
-         CLK   => CLK,
-         RST   => RST,
-         BTN   => BTN0,
-         MCLK  => MCLKi,
-         RST_N => RST_N,
-         TC    => OPEN
+         CLK       => CLK,
+         RST       => RST,
+         CNT_RESET => LArPix_CNT_RESET,
+         TRIG      => LArPix_rst_trig,
+         MCLK      => MCLKi,
+         RST_N     => RST_N,
+         TC        => OPEN
          );
 
    -----------------------------------------------------------------------------
