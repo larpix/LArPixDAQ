@@ -154,7 +154,7 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
       PORT (
          CLK   : IN  STD_LOGIC;
          RST   : IN  STD_LOGIC;
-         CNT_PULSE_LEN : IN INTEGER RANGE 0 TO 255;
+         CNT_PULSE_LEN : IN INTEGER RANGE 0 TO 2147483647;
          CNT_PULSE_REP : IN INTEGER RANGE 0 TO 2147483647;
          EN    : IN  STD_LOGIC;
          MCLK  : IN  STD_LOGIC;
@@ -206,6 +206,8 @@ ARCHITECTURE LArPixDAQ_arch OF LArPixDAQ IS
    SIGNAL LArPix_RX_data_update : STD_LOGIC;
    
    SIGNAL LArPix_rst_trig : STD_LOGIC := '0';
+   SIGNAL LArPix_rst_reg  : STD_LOGIC := '0';
+   SIGNAL rst_trig        : STD_LOGIC := '0';
    SIGNAL rst_reg         : STD_LOGIC := '0';
    
    SIGNAL UTIL_PULSE_LEN : INTEGER RANGE 0 TO 2147483647 := 2;
@@ -225,11 +227,12 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
    clock_generator_inst : clock_generator
       PORT MAP (
          CLKin  => GCLK,
-         RST    => BTN1,
+         RST    => rst_trig,
          CLK100 => CLK,
          CLK200 => OPEN,
          locked => locked
          );
+   rst_trig <= rst_reg OR BTN0;
 
    locked_n <= NOT locked;
 
@@ -333,10 +336,11 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          -- reset default values
          LArPix_CLK_RATIO <= 2;
          LArPix_CNT_RESET <= 128;
-         rst_reg <= '0';
+         LArPix_rst_reg <= '0';
          UTIL_PULSE_LEN <= 2;
          UTIL_PULSE_REP <= 4096;
          UTIL_PULSE_EN  <= '0';
+         rst_reg <= '0';
       ELSIF CLK'EVENT AND CLK = '1' THEN
          CASE write_reg_state IS
             WHEN IDLE =>
@@ -355,7 +359,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
                   
                -- addr 2 = trigger LArPix reset
                ELSIF write_reg_data(7 DOWNTO 0) = x"02" THEN
-                  rst_reg <= '1';
+                  LArPix_rst_reg <= '1';
                   
                -- addr 3 = utility pulse length
                ELSIF write_reg_data(7 DOWNTO 0) = x"03" THEN
@@ -368,6 +372,10 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
                -- addr 5 = utility pulse enable
                ELSIF write_reg_data(7 DOWNTO 0) = x"05" THEN
                   UTIL_PULSE_EN <= write_reg_data(8);
+                  
+               -- addr 6 = reset system
+               ELSIF write_reg_data(7 DOWNTO 0) = x"06" THEN
+                   rst_reg <= '1';
                
                END IF;
                write_reg_state <= FINISH;
@@ -375,6 +383,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
                write_reg_busy <= '0';
                write_reg_state <= IDLE;
                rst_reg <= '0';
+               LArPix_rst_reg <= '0';
             WHEN OTHERS =>
                NULL;
         END CASE;
@@ -458,7 +467,7 @@ BEGIN  -- ARCHITECTURE LArPixDAQ_arch
          );
    MCLK <= MCLKi;
 
-   LArPix_rst_trig <= BTN0 OR rst_reg;
+   LArPix_rst_trig <= BTN1 OR LArPix_rst_reg;
    LArPixRST_N_inst : LArPixRST_N
       PORT MAP (
          CLK       => CLK,
